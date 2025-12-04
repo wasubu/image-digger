@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Robust Universal Extractor</title>
+  <style>
+    :root { --primary: #3b82f6; --bg: #f3f4f6; --card: #ffffff; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: #1f2937;
+      margin: 0;
+      padding: 1rem;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header { flex: 0 0 auto; margin-bottom: 1rem; text-align: center; }
+    h1 { margin: 0; font-size: 1.5rem; color: #111827; }
+    p { margin: 0.25rem 0; color: #6b7280; font-size: 0.9rem; }
+
+    /* Controls */
+    .controls {
+      flex: 0 0 auto;
+      background: var(--card);
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .btn-file {
+      position: relative;
+      background: var(--primary);
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      transition: background 0.2s;
+    }
+    .btn-file:hover { background: #2563eb; }
+    .btn-file input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+    .status-area { flex: 1; }
+    .status-text { font-weight: 600; color: #4b5563; font-size: 0.9rem; margin-bottom: 4px; }
+    
+    .progress-bg { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.1s linear; }
+
+    /* Grid */
+    #results {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-auto-rows: min-content;
+      gap: 1rem;
+    }
+
+    .empty { grid-column: 1 / -1; text-align: center; color: #9ca3af; margin-top: 2rem; }
+
+    /* Card */
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 0.5rem;
+      background: #f9fafb;
+      display: flex;
+      flex-direction: column;
+      height: 200px;
+    }
+
+    .preview {
+      flex: 1;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.5rem;
+      position: relative;
+    }
+    
+    .preview img { width: 100%; height: 100%; object-fit: contain; }
+    
+    /* File Type Icons */
+    .icon-box {
+      font-size: 0.8rem; font-weight: 800; color: #6b7280;
+      border: 2px solid #d1d5db; padding: 4px 8px; border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .info { font-size: 0.75rem; color: #6b7280; display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+    .badge { padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; text-transform: uppercase; }
+    .badge.png { background: #dbeafe; color: #1e40af; }
+    .badge.jpg { background: #ffedd5; color: #9a3412; }
+    .badge.webp { background: #d1fae5; color: #065f46; }
+    .badge.unity3d { background: #1f2937; color: #f3f4f6; }
+
+    .btn-dl {
+      display: block; width: 100%; padding: 6px;
+      background: var(--primary); color: white;
+      text-align: center; border-radius: 4px; text-decoration: none;
+      font-size: 0.85rem; font-weight: 500;
+    }
+    .btn-dl:hover { background: #2563eb; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Robust Extractor</h1>
+  <p>Extracts valid PNG, JPG, WEBP, and UnityFS files.</p>
+</header>
+
+<div class="controls">
+  <div class="btn-file">
+    <span>📂 Open File</span>
+    <input type="file" id="fileInput" />
+  </div>
+  
+  <div class="status-area">
+    <div class="status-text" id="status">Waiting for file...</div>
+    <div class="progress-bg"><div class="progress-fill" id="progress"></div></div>
+  </div>
+</div>
+
+<div id="results">
+  <div class="empty">Images will appear here...</div>
+</div>
+
+<!-- WORKER SCRIPT -->
+<script id="worker-js" type="javascript/worker">
+  self.onmessage = function(e) {
+    const { buffer } = e.data;
+    const data = new Uint8Array(buffer);
+    const len = data.length;
+    let i = 0;
+    let lastReport = 0;
+    let results = [];
+    const batchSize = 20;
+
+    // Helper: Check sequence
+    function match(arr, off, seq) {
+      if (off + seq.length > arr.length) return false;
+      for(let x=0; x<seq.length; x++) if(arr[off+x] !== seq[x]) return false;
+      return true;
+    }
+
+    // Helper: Find sequence
+    function find(arr, off, seq, limit) {
+      const max = limit ? Math.min(arr.length - seq.length, off + limit) : arr.length - seq.length;
+      for(let x = off; x < max; x++) {
+        // Unroll simple check for speed
+        if (arr[x] === seq[0]) {
+          let m = true;
+          for(let y=1; y<seq.length; y++) if(arr[x+y] !== seq[y]) { m = false; break; }
+          if(m) return x;
+        }
+      }
+      return -1;
+    }
+
+    while (i < len) {
+      // Progress Check
+      if (i - lastReport > 500000) {
+        self.postMessage({ type: 'progress', val: i / len });
+        lastReport = i;
+      }
+
+      let found = null;
+      let nextI = i + 1;
+      const b = data[i];
+
+      // 1. PNG (0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A)
+      if (b === 0x89 && match(data, i, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) {
+         const iend = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+         const end = find(data, i + 8, iend);
+         if (end !== -1) {
+           const size = (end + 8) - i;
+           found = { type: 'png', mime: 'image/png', start: i, size: size };
+           nextI = i + size;
+         }
+      }
+      
+      // 2. JPEG (FF D8 FF) + Valid Header check to reduce false positives
+      else if (b === 0xFF && data[i+1] === 0xD8 && data[i+2] === 0xFF) {
+         // Valid JPEG usually has JFIF (FFE0) or Exif (FFE1)
+         // We scan for EOI (FF D9).
+         // JPEGs can have thumbnails (which end in FF D9). 
+         // Heuristic: Scan for FF D9. If the file is < 10MB, we just take the last FF D9 found? 
+         // Faster approach: Scan forward.
+         
+         let end = -1;
+         let ptr = i + 2;
+         while (ptr < len - 1) {
+            // Check for EOI
+            if (data[ptr] === 0xFF && data[ptr+1] === 0xD9) {
+               end = ptr;
+               // Heuristic: If we are deep inside a huge file, maybe this is the end. 
+               // Real parsers walk markers. 
+               // To avoid thumbnail truncation, we could look ahead 500 bytes. 
+               // If we see another FF D9, take that one.
+               if (match(data, ptr + 2, [0xFF, 0xD9])) {
+                 // Double EOI? sometimes happens.
+                 end = ptr + 2; 
+               }
+               break; 
+            }
+            ptr++;
+         }
+
+         if (end !== -1) {
+            const size = (end + 2) - i;
+            // Filter: Jpegs smaller than 100 bytes are garbage/false positives
+            if (size > 100) {
+               found = { type: 'jpg', mime: 'image/jpeg', start: i, size: size };
+               nextI = i + size;
+            }
+         }
+      }
+
+      // 3. UnityFS (0x55 0x6E 0x69 0x74 0x79 0x46 0x53 0x00)
+      else if (b === 0x55 && match(data, i, [0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53, 0x00])) {
+         try {
+           let ptr = i + 8; // skip sig
+           // Skip Version (u32)
+           ptr += 4;
+           // Skip strings
+           const skip = (p) => { while(p<len && data[p]!==0) p++; return p+1; }
+           ptr = skip(ptr); // Player ver
+           ptr = skip(ptr); // Engine ver
+           
+           // Size (Big Endian Int64)
+           const h = (data[ptr]<<24) | (data[ptr+1]<<16) | (data[ptr+2]<<8) | data[ptr+3];
+           const l = (data[ptr+4]<<24) | (data[ptr+5]<<16) | (data[ptr+6]<<8) | data[ptr+7];
+           const size = (h * 4294967296) + (l >>> 0);
+           
+           if (size > 0 && i + size <= len) {
+             found = { type: 'unity3d', mime: 'application/octet-stream', start: i, size: size };
+             nextI = i + size;
+           }
+         } catch(e){}
+      }
+
+      // 4. WEBP (RIFF .... WEBP)
+      else if (b === 0x52 && match(data, i, [0x52, 0x49, 0x46, 0x46])) {
+         if (match(data, i+8, [0x57, 0x45, 0x42, 0x50])) {
+            const size = data[i+4] | (data[i+5]<<8) | (data[i+6]<<16) | (data[i+7]<<24);
+            if (size > 0 && i + size + 8 <= len) {
+               found = { type: 'webp', mime: 'image/webp', start: i, size: size + 8 };
+               nextI = i + size + 8;
+            }
+         }
+      }
+
+      if (found) {
+         // Create a copy of the slice to send to main thread
+         const slice = data.slice(found.start, found.start + found.size);
+         results.push({ 
+           buf: slice, 
+           type: found.type, 
+           mime: found.mime, 
+           size: found.size 
+         });
+         
+         if (results.length >= batchSize) {
+           // Transfer buffers to avoid copy overhead
+           const buffers = results.map(r => r.buf.buffer);
+           self.postMessage({ type: 'batch', items: results }, buffers);
+           results = [];
+         }
+         i = nextI;
+         // Align 4 bytes (speed optimization, usually safe for resources)
+         while(i % 4 !== 0 && i < len) i++;
+      } else {
+        i++;
+      }
+    }
+    
+    if (results.length > 0) {
+       const buffers = results.map(r => r.buf.buffer);
+       self.postMessage({ type: 'batch', items: results }, buffers);
+    }
+    
+    self.postMessage({ type: 'done' });
+  };
+</script>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const resultsDiv = document.getElementById('results');
+  const statusDiv = document.getElementById('status');
+  const progressDiv = document.getElementById('progress');
+
+  let worker;
+  let count = 0;
+
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Reset
+    if (worker) worker.terminate();
+    resultsDiv.innerHTML = '';
+    count = 0;
+    progressDiv.style.width = '0%';
+    statusDiv.textContent = 'Reading file...';
+
+    // Build Worker
+    const blob = new Blob([document.getElementById('worker-js').textContent], {type: "text/javascript"});
+    worker = new Worker(URL.createObjectURL(blob));
+
+    worker.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg.type === 'progress') {
+        progressDiv.style.width = (msg.val * 100) + '%';
+        statusDiv.textContent = `Scanning... ${Math.round(msg.val * 100)}%`;
+      } else if (msg.type === 'batch') {
+        renderBatch(msg.items);
+      } else if (msg.type === 'done') {
+        progressDiv.style.width = '100%';
+        statusDiv.textContent = `Finished! Found ${count} files.`;
+        if (count === 0) resultsDiv.innerHTML = '<div class="empty">No valid files found.</div>';
+      }
+    };
+
+    const buffer = await file.arrayBuffer();
+    worker.postMessage({ buffer }, [buffer]);
+  });
+
+  function renderBatch(items) {
+    const frag = document.createDocumentFragment();
+    items.forEach(item => {
+      count++;
+      
+      // Create Blob on Main Thread (Safer for object URLs)
+      const blob = new Blob([item.buf], { type: item.mime });
+      const url = URL.createObjectURL(blob);
+      const sizeKB = (item.size / 1024).toFixed(1);
+
+      const div = document.createElement('div');
+      div.className = 'card';
+
+      // Decide Preview
+      let previewHtml = '';
+      if (item.type === 'unity3d') {
+        previewHtml = `<div class="icon-box">UNITY<br>BUNDLE</div>`;
+      } else {
+        // Image preview
+        previewHtml = `<img src="${url}" loading="lazy" alt="Image ${count}" />`;
+      }
+
+      div.innerHTML = `
+        <div class="preview">${previewHtml}</div>
+        <div class="info">
+          <span class="badge ${item.type}">${item.type.toUpperCase()}</span>
+          <span>${sizeKB} KB</span>
+        </div>
+        <a href="${url}" download="extracted_${count}.${item.type}" class="btn-dl">Download</a>
+      `;
+      frag.appendChild(div);
+    });
+    resultsDiv.appendChild(frag);
+  }
+</script>
+
+</body>
+</html>
