@@ -3,121 +3,144 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ultimate Unity & Image Extractor</title>
-  <!-- Load JSZip for unpacking archives -->
+  <title>Ultimate Game Asset Ripper</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  
   <style>
-    :root { --primary: #6366f1; --bg: #f8fafc; --text: #334155; }
+    :root {
+      --primary: #4f46e5; --bg: #0f172a; --card: #1e293b; --text: #f8fafc;
+      --accent-img: #38bdf8; --accent-aud: #f472b6; --accent-dat: #94a3b8;
+    }
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Segoe UI', Roboto, sans-serif;
       background: var(--bg); color: var(--text);
-      margin: 0; padding: 20px;
-      height: 100vh; display: flex; flex-direction: column;
-      box-sizing: border-box;
+      margin: 0; padding: 0; height: 100vh;
+      display: flex; flex-direction: column; overflow: hidden;
     }
 
-    header { text-align: center; margin-bottom: 20px; flex-shrink: 0; }
-    h1 { margin: 0; color: #1e293b; font-size: 1.8rem; }
-    p { margin: 5px 0; color: #64748b; font-size: 0.9rem; }
+    /* Top Bar */
+    header {
+      background: #111; padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #333;
+    }
+    .brand h1 { margin: 0; font-size: 1.2rem; font-weight: 800; letter-spacing: 0.5px; }
+    .brand span { color: var(--primary); }
+    .brand p { margin: 0; font-size: 0.75rem; color: #64748b; }
 
-    .controls {
-      background: white; padding: 20px; border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-      display: flex; gap: 15px; align-items: center;
-      flex-shrink: 0; margin-bottom: 20px;
+    /* Controls Area */
+    .toolbar {
+      padding: 1rem; background: #162032; border-bottom: 1px solid #333;
+      display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;
     }
 
-    .upload-btn {
+    .file-upload {
       position: relative; overflow: hidden;
       background: var(--primary); color: white;
-      padding: 10px 20px; border-radius: 8px;
-      font-weight: 600; cursor: pointer;
-      display: inline-flex; align-items: center;
-      transition: background 0.2s; white-space: nowrap;
+      padding: 0.6rem 1.2rem; border-radius: 6px;
+      font-weight: 600; cursor: pointer; transition: 0.2s;
+      display: flex; align-items: center; gap: 8px;
     }
-    .upload-btn:hover { background: #4f46e5; }
-    .upload-btn input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .file-upload:hover { background: #4338ca; }
+    .file-upload input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 
-    .status-bar { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
-    .status-text { font-size: 0.9rem; font-weight: 600; margin-bottom: 5px; }
+    .filters { display: flex; gap: 0.5rem; background: #0f172a; padding: 4px; border-radius: 6px; border: 1px solid #333; }
+    .filter-btn {
+      background: transparent; border: none; color: #94a3b8;
+      padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+    }
+    .filter-btn.active { background: #334155; color: white; }
     
-    .progress-track { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
-    .progress-fill { height: 100%; width: 0%; background: #22c55e; transition: width 0.2s; }
+    .actions { margin-left: auto; display: flex; gap: 10px; }
+    .action-btn {
+      background: #334155; color: white; border: none; padding: 0.6rem 1rem;
+      border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+    }
+    .action-btn:hover { background: #475569; }
+    .action-btn.download-all { background: #059669; }
+    .action-btn.download-all:hover { background: #047857; }
 
-    /* Results Grid */
-    #output {
-      flex-grow: 1; overflow-y: auto;
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      grid-auto-rows: min-content; gap: 15px;
-      padding-right: 5px;
+    /* Progress Bar */
+    .progress-container { width: 100%; height: 4px; background: #333; display: none; }
+    .progress-bar { height: 100%; background: var(--primary); width: 0%; transition: width 0.2s; }
+
+    /* Grid */
+    #grid {
+      flex: 1; padding: 1.5rem; overflow-y: auto;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-auto-rows: min-content; gap: 1.5rem;
     }
 
     .card {
-      background: white; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 8px; display: flex; flex-direction: column;
-      height: 180px; position: relative;
-      transition: transform 0.2s;
+      background: var(--card); border: 1px solid #334155; border-radius: 8px;
+      padding: 10px; display: flex; flex-direction: column; position: relative;
     }
-    .card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-
-    .preview {
-      flex: 1; background: #f1f5f9; border-radius: 6px;
-      margin-bottom: 8px; overflow: hidden;
-      display: flex; align-items: center; justify-content: center;
+    .card-preview {
+      height: 120px; background: #0f172a; border-radius: 6px;
+      margin-bottom: 10px; display: flex; align-items: center; justify-content: center;
+      overflow: hidden; position: relative;
     }
-    .preview img { width: 100%; height: 100%; object-fit: contain; }
+    .card-preview img { width: 100%; height: 100%; object-fit: contain; }
+    .card-preview audio { width: 90%; height: 30px; }
     
-    /* Format Badges */
-    .fmt-badge {
-      font-size: 0.7rem; font-weight: 800; padding: 2px 6px; border-radius: 4px;
-      text-transform: uppercase; margin-bottom: 4px; display: inline-block;
-    }
-    .fmt-png { background: #dbeafe; color: #1e40af; }
-    .fmt-jpg { background: #ffedd5; color: #9a3412; }
-    .fmt-dds { background: #fae8ff; color: #86198f; } /* Purple for generic/texture */
-    .fmt-ktx { background: #fae8ff; color: #86198f; }
-    .fmt-unity { background: #1f2937; color: #f8fafc; }
+    .type-icon { font-size: 0.8rem; font-weight: 900; padding: 4px 8px; border: 2px solid #334155; border-radius: 4px; color: #64748b; }
 
-    .meta { font-size: 0.75rem; color: #94a3b8; margin-bottom: 5px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    .card-meta { font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-tags { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tag { font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+    
+    .tag-img { background: #0c4a6e; color: var(--accent-img); }
+    .tag-aud { background: #831843; color: var(--accent-aud); }
+    .tag-dat { background: #334155; color: var(--accent-dat); }
 
-    .dl-btn {
-      background: #e2e8f0; color: #475569; text-decoration: none;
-      padding: 5px; border-radius: 4px; text-align: center;
-      font-size: 0.8rem; font-weight: 600;
+    .card-btn {
+      margin-top: auto; padding: 6px; text-align: center;
+      background: #334155; color: white; text-decoration: none;
+      border-radius: 4px; font-size: 0.8rem; font-weight: 600;
     }
-    .dl-btn:hover { background: #cbd5e1; }
+    .card-btn:hover { background: var(--primary); }
 
-    .file-icon {
-      font-weight: 900; color: #cbd5e1; font-size: 1.5rem; text-transform: uppercase;
-    }
+    .empty-state { grid-column: 1 / -1; text-align: center; color: #475569; margin-top: 4rem; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Unity Asset & Image Extractor</h1>
-  <p>Supports: ZIP, APK, PNG, JPG, WEBP, DDS, KTX, BMP, GIF, UnityFS</p>
+  <div class="brand">
+    <h1>Game<span>Ripper</span></h1>
+    <p>Extract Images, Audio & Unity Files from archives</p>
+  </div>
+  <div id="status">Waiting for file...</div>
 </header>
 
-<div class="controls">
-  <div class="upload-btn">
-    <span>📂 Upload File / Zip</span>
+<div class="progress-container" id="progressContainer"><div class="progress-bar" id="progressBar"></div></div>
+
+<div class="toolbar">
+  <div class="file-upload">
+    <span>📂 Open File / Zip / APK</span>
     <input type="file" id="fileInput" />
   </div>
-  <div class="status-bar">
-    <div class="status-text" id="status">Ready</div>
-    <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+
+  <div class="filters">
+    <button class="filter-btn active" onclick="filter('all')">All</button>
+    <button class="filter-btn" onclick="filter('image')">Images</button>
+    <button class="filter-btn" onclick="filter('audio')">Audio</button>
+    <button class="filter-btn" onclick="filter('data')">Data</button>
+  </div>
+
+  <div class="actions">
+    <button class="action-btn" onclick="clearAll()">Clear</button>
+    <button class="action-btn download-all" id="dlAllBtn" onclick="downloadAll()" disabled>Download All (0)</button>
   </div>
 </div>
 
-<div id="output">
-  <div style="grid-column:1/-1; text-align:center; color:#94a3b8; margin-top:50px;">
-    Select a file to begin scanning. <br>Archives (.zip, .apk) will be unpacked automatically.
+<div id="grid">
+  <div class="empty-state">
+    Drag & Drop a file here (EXE, DLL, ZIP, APK, OBB, DATA)<br>
+    We will find hidden Assets inside.
   </div>
 </div>
 
-<!-- WORKER: Handles pure byte scanning logic -->
+<!-- WORKER: The Brain -->
 <script id="worker-code" type="javascript/worker">
   self.onmessage = function(e) {
     const { buffer, sourceName } = e.data;
@@ -125,19 +148,39 @@
     const len = data.length;
     let results = [];
     
-    // Helper: Simple match
-    function match(arr, off, pat) {
-      if (off + pat.length > arr.length) return false;
-      for (let i=0; i<pat.length; i++) if (arr[off+i] !== pat[i]) return false;
+    const SIGS = {
+      png: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+      jpg: [0xFF, 0xD8, 0xFF],
+      gif: [0x47, 0x49, 0x46, 0x38],
+      riff: [0x52, 0x49, 0x46, 0x46], // RIFF (Wav, Webp)
+      ogg:  [0x4F, 0x67, 0x67, 0x53], // OggS
+      id3:  [0x49, 0x44, 0x33],       // MP3 ID3
+      dds:  [0x44, 0x44, 0x53, 0x20], // DDS
+      ktx:  [0xAB, 0x4B, 0x54, 0x58], // KTX
+      unity:[0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53] // UnityFS
+    };
+
+    // Helper: Exact Match
+    function match(off, sig) {
+      if (off + sig.length > len) return false;
+      for(let k=0; k<sig.length; k++) if(data[off+k] !== sig[k]) return false;
       return true;
     }
 
-    // Helper: Search forward
-    function find(arr, off, pat, limit) {
-      const max = limit ? Math.min(arr.length, off+limit) : arr.length;
-      for (let i=off; i<max - pat.length; i++) {
-        if (arr[i] === pat[0]) { // fast check
-          if (match(arr, i, pat)) return i;
+    // Helper: Find next header (to determine cut-off for formats without explicit size)
+    function findNextHeader(start, maxScan) {
+      const limit = Math.min(len, start + maxScan);
+      // Skip a bit to avoid self-match
+      for(let i = start + 4; i < limit; i++) {
+        const b = data[i];
+        // Fast check first byte of knownsigs
+        if(b === 0x89 || b === 0xFF || b === 0x47 || b === 0x52 || b === 0x4F || b === 0x49 || b === 0x44 || b === 0xAB || b === 0x55) {
+          // Check full signatures
+          if (match(i, SIGS.png) || match(i, SIGS.jpg) || match(i, SIGS.gif) || 
+              match(i, SIGS.riff) || match(i, SIGS.ogg) || match(i, SIGS.id3) ||
+              match(i, SIGS.dds)  || match(i, SIGS.ktx) || match(i, SIGS.unity)) {
+            return i;
+          }
         }
       }
       return -1;
@@ -149,216 +192,281 @@
       let nextI = i + 1;
       const b = data[i];
 
-      // 1. PNG
-      if (b === 0x89 && match(data, i, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) {
-         const end = find(data, i+8, [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82]); // IEND
-         if (end !== -1) {
-           const size = (end + 8) - i;
-           found = { type: 'png', ext: 'png', mime: 'image/png', start: i, size: size };
-           nextI = i + size;
-         }
-      }
-      // 2. JPG
-      else if (b === 0xFF && data[i+1] === 0xD8 && data[i+2] === 0xFF) {
-         // Heuristic: Scan for EOI (FF D9). 
-         let ptr = i + 2;
+      // --- IMAGES ---
+      if (b === 0x89 && match(i, SIGS.png)) {
+         // Find IEND
          let end = -1;
-         // look ahead max 20MB for jpg end to prevent freezing on massive false positives
-         const scanLimit = 20 * 1024 * 1024; 
-         end = find(data, ptr, [0xFF, 0xD9], scanLimit);
-         
-         if (end !== -1) {
-           const size = (end + 2) - i;
-           if (size > 150) { // filter tiny junk
-             found = { type: 'jpg', ext: 'jpg', mime: 'image/jpeg', start: i, size: size };
-             nextI = i + size;
-           }
+         const iendSig = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+         for(let k=i+8; k<len-8; k++) {
+             if(data[k] === 0x49 && match(k, iendSig)) { end = k; break; }
          }
-      }
-      // 3. UnityFS (AssetBundle)
-      else if (b === 0x55 && match(data, i, [0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53])) { // UnityFS
-         // Try to parse size from header
-         try {
-            let ptr = i + 8; // skip UnityFS\0
-            ptr += 4; // version
-            // skip strings
-            while(ptr < len && data[ptr] !== 0) ptr++; ptr++;
-            while(ptr < len && data[ptr] !== 0) ptr++; ptr++;
-            // Size is BigEndian Int64
-            const h = (data[ptr]<<24)|(data[ptr+1]<<16)|(data[ptr+2]<<8)|data[ptr+3];
-            const l = (data[ptr+4]<<24)|(data[ptr+5]<<16)|(data[ptr+6]<<8)|data[ptr+7];
-            const size = (h * 4294967296) + (l>>>0);
-            if (size > 0 && i+size <= len) {
-               found = { type: 'unity', ext: 'unity3d', mime: 'application/octet-stream', start: i, size: size };
-               nextI = i + size;
-            }
-         } catch(e){}
-      }
-      // 4. DDS (DirectDraw Surface) - 0x44 0x44 0x53 0x20
-      else if (b === 0x44 && match(data, i, [0x44, 0x44, 0x53, 0x20])) {
-         // DDS header is 124 bytes. But we need total file size. 
-         // DDS doesn't strictly store file size in header, usually Texture dimensions + Mipmaps.
-         // Heuristic: Scan until we hit another known header or reasonable limit? 
-         // Actually, raw DDS extraction is tricky without size. 
-         // Strategy: Assume contiguous block until next potential header or EOF.
-         // Warning: This is a loose extraction.
-         let potentialEnd = len;
-         // Look for next PNG/JPG/Unity/DDS header to cut off
-         // This is slow, so we just grab a chunk or rely on the fact that inside Unity assets,
-         // textures are usually distinct blocks.
-         // For now, let's grab the Header + reasonable data or up to 5MB
-         const estSize = Math.min(len - i, 5 * 1024 * 1024);
-         found = { type: 'dds', ext: 'dds', mime: 'application/octet-stream', start: i, size: estSize };
-         nextI = i + 128; // Just skip header to avoid loops, DDS extraction is partial support
-      }
-      // 5. KTX (Khronos Texture) - 0xAB 0x4B 0x54 0x58 0x20 0x31 0x31 0xBB
-      else if (b === 0xAB && match(data, i, [0xAB, 0x4B, 0x54, 0x58, 0x20, 0x31, 0x31, 0xBB])) {
-          found = { type: 'ktx', ext: 'ktx', mime: 'application/octet-stream', start: i, size: Math.min(len-i, 1024*1024*10) };
-          nextI = i + 64; 
-      }
-      // 6. GIF (GIF8)
-      else if (b === 0x47 && match(data, i, [0x47, 0x49, 0x46, 0x38])) {
-         const end = find(data, i+6, [0x00, 0x3B]); // Terminator
          if(end !== -1) {
-             found = { type: 'gif', ext: 'gif', mime: 'image/gif', start: i, size: (end+2)-i };
-             nextI = i + found.size;
+           const size = (end+8)-i;
+           found = {cat:'image', ext:'png', mime:'image/png', start:i, size:size};
+           nextI = i+size;
          }
+      }
+      else if (b === 0xFF && match(i, SIGS.jpg)) {
+         // Find FF D9
+         let end = -1; 
+         // Limit scan to 10MB to prevent hangs
+         const limit = Math.min(len, i + 10_000_000); 
+         for(let k=i+2; k<limit; k++) {
+            if(data[k] === 0xFF && data[k+1] === 0xD9) { end = k; break; }
+         }
+         if(end !== -1) {
+            found = {cat:'image', ext:'jpg', mime:'image/jpeg', start:i, size:(end+2)-i};
+            nextI = i+found.size;
+         }
+      }
+      else if (b === 0x47 && match(i, SIGS.gif)) {
+         // GIF terminator 00 3B
+         let end = -1;
+         for(let k=i+6; k<Math.min(len, i+5_000_000); k++) {
+            if(data[k]===0x00 && data[k+1]===0x3B) { end=k; break; }
+         }
+         if(end !== -1) {
+            found = {cat:'image', ext:'gif', mime:'image/gif', start:i, size:(end+2)-i};
+            nextI = i+found.size;
+         }
+      }
+      
+      // --- AUDIO ---
+      else if (b === 0x4F && match(i, SIGS.ogg)) {
+         // OGG pages. Hard to find end without parsing.
+         // Heuristic: Read until no "OggS" header found for 4KB? 
+         // Or scan for next file header.
+         const nextHead = findNextHeader(i, 5_000_000); // 5MB max for audio chunk if no other file found
+         const size = (nextHead !== -1) ? nextHead - i : Math.min(len-i, 2_000_000);
+         found = {cat:'audio', ext:'ogg', mime:'audio/ogg', start:i, size:size};
+         nextI = i+size;
+      }
+      else if (b === 0x49 && match(i, SIGS.id3)) { // MP3 ID3
+         const nextHead = findNextHeader(i, 5_000_000);
+         const size = (nextHead !== -1) ? nextHead - i : Math.min(len-i, 3_000_000);
+         found = {cat:'audio', ext:'mp3', mime:'audio/mpeg', start:i, size:size};
+         nextI = i+size;
+      }
+
+      // --- RIFF (WAV or WEBP) ---
+      else if (b === 0x52 && match(i, SIGS.riff)) {
+         const fileSize = data[i+4] | (data[i+5]<<8) | (data[i+6]<<16) | (data[i+7]<<24);
+         const type = String.fromCharCode(data[i+8], data[i+9], data[i+10], data[i+11]);
+         if (type === 'WEBP') {
+             found = {cat:'image', ext:'webp', mime:'image/webp', start:i, size:fileSize+8};
+         } else if (type === 'WAVE') {
+             found = {cat:'audio', ext:'wav', mime:'audio/wav', start:i, size:fileSize+8};
+         }
+         if(found && (found.size + i <= len)) nextI = i + found.size;
+      }
+
+      // --- DATA / TEXTURES ---
+      else if (b === 0x55 && match(i, SIGS.unity)) {
+         // UnityFS
+         // Heuristic scan for end is unreliable, we usually need big endian size parse
+         // Simplified: Scan for next header
+         const nextHead = findNextHeader(i, 20_000_000);
+         const size = (nextHead !== -1) ? nextHead - i : 1000;
+         found = {cat:'data', ext:'unity3d', mime:'application/octet-stream', start:i, size:size};
+         nextI = i+size;
+      }
+      else if (b === 0x44 && match(i, SIGS.dds)) {
+         const nextHead = findNextHeader(i, 10_000_000);
+         const size = (nextHead !== -1) ? nextHead - i : Math.min(len-i, 1_000_000);
+         found = {cat:'data', ext:'dds', mime:'application/octet-stream', start:i, size:size};
+         nextI = i+size;
       }
 
       if (found) {
-        // Copy data for transfer
-        const buf = data.slice(found.start, found.start + found.size);
-        results.push({ buf: buf, ...found, source: sourceName });
+        // Validation: Ignore tiny files (noise)
+        if (found.size > 64) {
+            const buf = data.slice(found.start, found.start + found.size);
+            results.push({ buf: buf, ...found, source: sourceName });
+        }
         i = nextI;
-        // Padding align
-        while(i % 4 !== 0 && i < len) i++;
+        while(i % 4 !== 0 && i < len) i++; // 4-byte align
       } else {
         i++;
       }
     }
-
-    if (results.length > 0) {
-      // Transfer buffers
-      const buffers = results.map(r => r.buf.buffer);
-      self.postMessage({ results }, buffers);
-    }
+    
+    // Send back results
+    const buffers = results.map(r => r.buf.buffer);
+    self.postMessage({ results }, buffers);
     self.postMessage({ done: true });
   }
 </script>
 
 <script>
-  const fileInput = document.getElementById('fileInput');
-  const output = document.getElementById('output');
+  // --- UI Elements ---
+  const grid = document.getElementById('grid');
   const status = document.getElementById('status');
+  const progressContainer = document.getElementById('progressContainer');
   const progressBar = document.getElementById('progressBar');
+  const dlAllBtn = document.getElementById('dlAllBtn');
+  const fileInput = document.getElementById('fileInput');
 
-  // Create Worker
-  const blob = new Blob([document.getElementById('worker-code').textContent], {type: "text/javascript"});
-  const workerUrl = URL.createObjectURL(blob);
-  let globalCount = 0;
+  // --- State ---
+  let exportZip = new JSZip(); // Global zip for "Download All"
+  let totalFiles = 0;
+  let activeFilter = 'all';
+
+  // --- Worker Setup ---
+  const workerBlob = new Blob([document.getElementById('worker-code').textContent], {type: "text/javascript"});
+  const workerUrl = URL.createObjectURL(workerBlob);
 
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Reset UI
-    output.innerHTML = '';
-    globalCount = 0;
-    status.textContent = 'Analyzing file structure...';
+    
+    // Reset
+    grid.innerHTML = '';
+    exportZip = new JSZip(); // Reset zip
+    totalFiles = 0;
+    updateDownloadBtn();
+    status.textContent = 'Processing...';
+    progressContainer.style.display = 'block';
     progressBar.style.width = '10%';
 
-    // Detect ZIP/APK by Magic Numbers or Extension
-    if (file.name.match(/\.(zip|apk|jar|obb)$/i)) {
-      status.textContent = 'Unzipping archive... (This may take a moment)';
+    // ZIP Handling
+    if (file.name.match(/\.(zip|apk|jar|obb|ipa)$/i)) {
+      status.textContent = 'Unpacking Archive...';
       try {
         const zip = await JSZip.loadAsync(file);
-        const fileNames = Object.keys(zip.files);
-        status.textContent = `Archive loaded. Scanning ${fileNames.length} files...`;
-        
+        const files = Object.keys(zip.files).filter(n => !zip.files[n].dir);
         let processed = 0;
-        // Iterate files in zip
-        for (const filename of fileNames) {
-          if (zip.files[filename].dir) continue;
-          
-          // Get data
-          const fileData = await zip.files[filename].async("uint8array");
-          
-          // Send to scanner
-          await runScanner(fileData.buffer, filename);
-          
+        
+        for (const name of files) {
+          const data = await zip.files[name].async("uint8array");
+          await scanBuffer(data.buffer, name);
           processed++;
-          progressBar.style.width = ((processed / fileNames.length) * 100) + '%';
+          progressBar.style.width = Math.round((processed / files.length) * 100) + '%';
         }
-        status.textContent = `Completed. Scanned ${fileNames.length} files. Found ${globalCount} assets.`;
-
-      } catch (err) {
-        console.error(err);
-        status.textContent = 'Error reading ZIP. Scanning as raw binary...';
+      } catch(e) {
+        console.error(e);
+        status.textContent = 'Archive error. Scanning as binary...';
         const buf = await file.arrayBuffer();
-        await runScanner(buf, file.name);
+        await scanBuffer(buf, file.name);
       }
     } else {
-      // Normal binary scan
-      status.textContent = 'Scanning raw binary...';
+      status.textContent = 'Scanning Binary...';
       const buf = await file.arrayBuffer();
-      await runScanner(buf, file.name);
-      status.textContent = `Completed. Found ${globalCount} assets.`;
+      await scanBuffer(buf, file.name);
       progressBar.style.width = '100%';
     }
+    
+    status.textContent = `Done. Found ${totalFiles} assets.`;
+    setTimeout(() => progressContainer.style.display = 'none', 1000);
   });
 
-  // Function to run worker on a specific buffer
-  function runScanner(buffer, name) {
-    return new Promise((resolve) => {
+  function scanBuffer(buffer, filename) {
+    return new Promise(resolve => {
       const worker = new Worker(workerUrl);
-      
       worker.onmessage = (e) => {
-        if (e.data.done) {
+        if(e.data.results) {
+          addResults(e.data.results);
+        } else if (e.data.done) {
           worker.terminate();
           resolve();
-        } else if (e.data.results) {
-          renderResults(e.data.results);
         }
       };
-
-      // Send buffer to worker
-      worker.postMessage({ buffer, sourceName: name }, [buffer]);
+      worker.postMessage({ buffer, sourceName: filename }, [buffer]);
     });
   }
 
-  function renderResults(items) {
-    const fragment = document.createDocumentFragment();
+  function addResults(items) {
+    const frag = document.createDocumentFragment();
+    
     items.forEach(item => {
-      globalCount++;
-      const card = document.createElement('div');
-      card.className = 'card';
+      totalFiles++;
+      
+      // Add to Export ZIP
+      // Naming collision handling:
+      const uniqueName = `${totalFiles}_${item.ext}`;
+      exportZip.file(`${item.cat}/${uniqueName}`, item.buf);
 
+      // UI Creation
       const blob = new Blob([item.buf], {type: item.mime});
       const url = URL.createObjectURL(blob);
-      const sizeKB = (item.size / 1024).toFixed(1);
+      const sizeStr = (item.size / 1024).toFixed(1) + ' KB';
 
-      // Handle Preview
-      let previewHTML = '';
-      if (['png','jpg','gif','webp'].includes(item.ext)) {
-        previewHTML = `<img src="${url}" loading="lazy" />`;
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.dataset.cat = item.cat; // For filtering
+      if (activeFilter !== 'all' && activeFilter !== item.cat) div.style.display = 'none';
+
+      let preview = '';
+      if (item.cat === 'image' && ['png','jpg','webp','gif'].includes(item.ext)) {
+        preview = `<img src="${url}" loading="lazy" />`;
+      } else if (item.cat === 'audio') {
+        preview = `<audio controls src="${url}"></audio>`;
       } else {
-        // For Unity, DDS, KTX -> Show Text Icon
-        previewHTML = `<div class="file-icon">${item.ext.toUpperCase()}</div>`;
+        preview = `<div class="type-icon">${item.ext.toUpperCase()}</div>`;
       }
 
-      card.innerHTML = `
-        <div class="preview">${previewHTML}</div>
-        <div class="meta" title="Source: ${item.source}">Src: ${item.source}</div>
-        <div class="meta">
-          <span class="fmt-badge fmt-${item.type}">${item.ext}</span>
-          ${sizeKB} KB
+      div.innerHTML = `
+        <div class="card-preview">${preview}</div>
+        <div class="card-tags">
+          <span class="tag tag-${item.cat.substring(0,3)}">${item.cat}</span>
+          <span class="tag tag-dat">${item.ext}</span>
         </div>
-        <a href="${url}" download="${item.source}_extracted_${globalCount}.${item.ext}" class="dl-btn">Download</a>
+        <div class="card-meta" title="${item.source}">Src: ${item.source}</div>
+        <div class="card-meta">${sizeStr}</div>
+        <a href="${url}" download="extract_${totalFiles}.${item.ext}" class="card-btn">Download</a>
       `;
-      fragment.appendChild(card);
+      frag.appendChild(div);
     });
-    output.appendChild(fragment);
+
+    grid.appendChild(frag);
+    updateDownloadBtn();
+  }
+
+  // --- Filtering ---
+  window.filter = function(cat) {
+    activeFilter = cat;
+    // Update buttons
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.filter-btn[onclick="filter('${cat}')"]`).classList.add('active');
+    
+    // Hide/Show cards
+    const cards = document.querySelectorAll('.card');
+    cards.forEach(c => {
+      if (cat === 'all' || c.dataset.cat === cat) c.style.display = 'flex';
+      else c.style.display = 'none';
+    });
+  };
+
+  // --- Download All ---
+  window.downloadAll = function() {
+    if (totalFiles === 0) return;
+    const btn = document.getElementById('dlAllBtn');
+    const oldText = btn.textContent;
+    btn.textContent = 'Zipping...';
+    btn.disabled = true;
+
+    exportZip.generateAsync({type:"blob"}).then(function(content) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = "GameRipper_Extract.zip";
+      link.click();
+      btn.textContent = oldText;
+      btn.disabled = false;
+    });
+  };
+
+  window.clearAll = function() {
+    grid.innerHTML = '<div class="empty-state">Cleared. Ready for next file.</div>';
+    exportZip = new JSZip();
+    totalFiles = 0;
+    updateDownloadBtn();
+    status.textContent = 'Ready';
+  };
+
+  function updateDownloadBtn() {
+    dlAllBtn.textContent = `Download All (${totalFiles})`;
+    dlAllBtn.disabled = totalFiles === 0;
   }
 </script>
+
 </body>
 </html>
