@@ -3,294 +3,254 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Deep Scan Asset Ripper</title>
+  <title>Unity Deep Asset Extractor</title>
+  
+  <!-- Libs for Archives and Compression -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lz4js@0.2.0/build/lz4.min.js"></script>
+
   <style>
     :root {
-      --bg: #121212; --surface: #1e1e1e; --primary: #bb86fc;
-      --secondary: #03dac6; --error: #cf6679; --text: #e0e0e0;
+      --bg: #0f172a; --surface: #1e293b; --primary: #38bdf8; --text: #f1f5f9;
+      --tag-img: #10b981; --tag-unity: #f43f5e; --tag-tex: #a855f7;
     }
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Segoe UI', system-ui, sans-serif;
       background: var(--bg); color: var(--text);
       margin: 0; padding: 0; height: 100vh;
-      display: flex; flex-direction: column;
+      display: flex; flex-direction: column; overflow: hidden;
     }
 
-    /* HEADER */
     header {
-      background: var(--surface); padding: 1rem 1.5rem;
-      border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;
+      background: #020617; padding: 1rem 1.5rem;
+      border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;
     }
-    h1 { margin: 0; font-size: 1.2rem; font-weight: 700; color: white; }
+    h1 { margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; }
     h1 span { color: var(--primary); }
-    
-    /* CONTROLS */
+    .status { font-size: 0.85rem; color: #94a3b8; font-family: monospace; }
+
+    /* Controls */
     .controls {
-      padding: 1rem 1.5rem; background: #181818;
-      display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+      padding: 1rem; background: var(--surface);
+      display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #334155;
     }
     
-    .upload-btn {
+    .btn-file {
       position: relative; overflow: hidden;
-      background: var(--primary); color: #000;
-      padding: 0.6rem 1.5rem; border-radius: 4px;
-      font-weight: 700; cursor: pointer; text-transform: uppercase; font-size: 0.85rem;
-      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: var(--primary); color: #0f172a;
+      padding: 0.6rem 1.2rem; border-radius: 6px; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+      transition: filter 0.2s;
     }
-    .upload-btn:hover { opacity: 0.9; }
-    .upload-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+    .btn-file:hover { filter: brightness(1.1); }
+    .btn-file input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor: pointer; }
 
-    .toggle-switch {
-      display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #aaa;
-      background: #2a2a2a; padding: 6px 12px; border-radius: 20px; border: 1px solid #444;
+    .btn-dl {
+      background: #334155; color: white; border: none; padding: 0.6rem 1rem;
+      border-radius: 6px; cursor: pointer; font-weight: 600; margin-left: auto;
     }
-    .toggle-switch input { margin: 0; }
+    .btn-dl:hover { background: #475569; }
+    .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .stats { margin-left: auto; font-size: 0.85rem; color: #888; }
-    .btn-download {
-      background: var(--secondary); color: #000; border: none;
-      padding: 0.6rem 1.2rem; border-radius: 4px; font-weight: 700;
-      cursor: pointer; font-size: 0.85rem; text-transform: uppercase;
-    }
-    .btn-download:disabled { background: #444; color: #888; cursor: not-allowed; }
+    /* Progress */
+    .progress-track { height: 4px; background: #020617; width: 100%; display: none; }
+    .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.2s; }
 
-    /* PROGRESS */
-    #progress-area { height: 4px; background: #333; width: 100%; display: none; }
-    #progress-bar { height: 100%; background: var(--secondary); width: 0%; transition: width 0.1s; }
-
-    /* GRID */
+    /* Grid */
     #grid {
       flex: 1; overflow-y: auto; padding: 1.5rem;
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       grid-auto-rows: min-content; gap: 1rem;
     }
 
     .card {
-      background: var(--surface); border: 1px solid #333;
-      border-radius: 6px; padding: 0.5rem;
-      display: flex; flex-direction: column;
-      height: 190px; transition: transform 0.1s;
+      background: #020617; border: 1px solid #334155; border-radius: 8px;
+      padding: 8px; display: flex; flex-direction: column; position: relative;
     }
-    .card:hover { border-color: var(--primary); transform: translateY(-2px); }
-
-    .preview-box {
-      flex: 1; background: #000; border-radius: 4px;
-      margin-bottom: 0.5rem; overflow: hidden;
-      display: flex; align-items: center; justify-content: center;
-      position: relative;
-    }
-    .preview-box img { width: 100%; height: 100%; object-fit: contain; }
     
-    .format-label {
-      position: absolute; top: 4px; left: 4px;
-      background: rgba(0,0,0,0.7); color: white;
-      font-size: 0.6rem; padding: 2px 4px; border-radius: 3px; font-weight: bold;
-      border: 1px solid #555;
+    .card-thumb {
+      height: 100px; background: #1e293b; border-radius: 6px; margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+      position: relative;
+      background-image: linear-gradient(45deg, #1e293b 25%, #182030 25%, #182030 50%, #1e293b 50%, #1e293b 75%, #182030 75%, #182030 100%);
+      background-size: 20px 20px;
+    }
+    .card-thumb img { width: 100%; height: 100%; object-fit: contain; }
+    
+    .type-badge {
+      font-size: 1.5rem; font-weight: 900; color: #475569; text-transform: uppercase;
     }
 
-    .info-row { display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; margin-bottom: 4px; }
-    .file-name { font-size: 0.75rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.25rem; }
+    .card-tags { display: flex; gap: 4px; margin-bottom: 6px; }
+    .tag { font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+    .tag.png, .tag.jpg, .tag.webp { background: var(--tag-img); color: #022c22; }
+    .tag.dds, .tag.ktx, .tag.astc, .tag.pvr { background: var(--tag-tex); color: #2e1065; }
+    .tag.unity { background: var(--tag-unity); color: #4c0519; }
 
-    .dl-link {
-      background: #333; color: white; text-align: center;
-      text-decoration: none; padding: 6px; border-radius: 3px;
-      font-size: 0.75rem; font-weight: 600;
+    .card-info { font-size: 0.75rem; color: #94a3b8; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    .card-btn {
+      text-decoration: none; background: #334155; color: white;
+      text-align: center; padding: 6px; border-radius: 4px;
+      font-size: 0.8rem; font-weight: 600; margin-top: auto;
     }
-    .dl-link:hover { background: var(--primary); color: black; }
-
-    .placeholder-text {
-      font-weight: 800; color: #444; font-size: 1.5rem;
-      text-transform: uppercase;
-    }
-
-    .empty-msg { grid-column: 1/-1; text-align: center; color: #555; margin-top: 50px; }
+    .card-btn:hover { background: var(--primary); color: #0f172a; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Deep<span>Scan</span> Ripper</h1>
-  <div class="stats" id="statusText">Ready</div>
+  <h1>Unity<span>Extractor</span></h1>
+  <div class="status" id="status">Ready</div>
 </header>
 
-<div id="progress-area"><div id="progress-bar"></div></div>
+<div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressBar"></div></div>
 
 <div class="controls">
-  <div class="upload-btn">
-    <span>📂 Open File / ZIP</span>
+  <div class="btn-file">
+    <span>📂 Load File (Unity/Zip/Data)</span>
     <input type="file" id="fileInput" />
   </div>
-
-  <label class="toggle-switch" title="Checks every single byte. Slower, but finds everything.">
-    <input type="checkbox" id="deepScanToggle">
-    Deep Scan Mode
-  </label>
-
-  <div style="flex:1"></div>
-  <button class="btn-download" id="dlAllBtn" onclick="downloadAll()" disabled>Download All</button>
+  <button class="btn-dl" id="dlAllBtn" onclick="downloadAll()" disabled>Download All (0)</button>
 </div>
 
 <div id="grid">
-  <div class="empty-msg">
-    Select a file to begin.<br>
-    Supports: PNG, Fixed JPG, WEBP, TGA, BMP, PVR, PKM, KTX, UnityFS, Audio.
+  <div style="grid-column:1/-1; text-align:center; color:#475569; margin-top:50px;">
+    Supports: <strong>UnityFS</strong> (Decompression), <strong>ZIP</strong>, <strong>APK</strong>.<br>
+    Detects: PNG, JPG, WEBP, DDS, KTX, ASTC, PVR.
   </div>
 </div>
 
-<!-- WORKER SCRIPT -->
-<script id="worker-script" type="javascript/worker">
+<!-- WORKER: Heavy Processing -->
+<script id="worker-js" type="javascript/worker">
+  // Mock LZ4 if not loaded (will rely on main thread passing it or error check)
+  // Since we can't easily import external scripts inside a Blob-worker without absolute URLs,
+  // We will run the scanner logic here, but handle Unity unpacking in the MAIN THREAD 
+  // or pass the uncompressed buffer here.
+  
+  // Actually, let's keep it simple: Main thread handles Archives (ZIP/UnityFS) -> Worker scans Raw Bytes.
+  
   self.onmessage = function(e) {
-    const { buffer, deepScan, sourceName } = e.data;
+    const { buffer, sourceName } = e.data;
     const data = new Uint8Array(buffer);
     const len = data.length;
     let results = [];
-    
-    // Config
-    // Step size: 1 for Deep Scan, 4 for Speed (most assets are 4-byte aligned)
-    const step = deepScan ? 1 : 4; 
-    
-    // --- SIGNATURES ---
-    const PNG_SIG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    const WEBP_SIG = [0x52, 0x49, 0x46, 0x46]; // RIFF
-    const PKM_SIG = [0x50, 0x4B, 0x4D, 0x20]; // PKM (ETC1)
-    const PVR_SIG = [0x50, 0x56, 0x52, 0x03]; // PVR V3
-    const KTX_SIG = [0xAB, 0x4B, 0x54, 0x58, 0x20]; // KTX
-    const BMP_SIG = [0x42, 0x4D]; // BM
 
-    // Helper: Match
+    // Signatures
+    const SIGS = {
+      png:  [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+      jpg:  [0xFF, 0xD8, 0xFF],
+      webp: [0x52, 0x49, 0x46, 0x46],
+      ktx:  [0xAB, 0x4B, 0x54, 0x58, 0x20],
+      dds:  [0x44, 0x44, 0x53, 0x20],
+      pvr:  [0x50, 0x56, 0x52, 0x03],
+      astc: [0x13, 0xAB, 0xA1, 0x5C],
+    };
+
     function match(off, sig) {
       if (off + sig.length > len) return false;
-      for (let i=0; i<sig.length; i++) if (data[off+i] !== sig[i]) return false;
+      for (let i=0; i<sig.length; i++) if(data[off+i] !== sig[i]) return false;
       return true;
     }
 
-    // Helper: Find sequence
-    function find(start, sig, limit) {
-      const max = limit ? Math.min(len, start+limit) : len;
-      for (let i=start; i<max-sig.length; i++) {
-         if (data[i] === sig[0] && match(i, sig)) return i;
-      }
-      return -1;
-    }
-
-    // Helper: Read u32 LE
-    function readU32(off) {
+    function readU32LE(off) {
+      if (off + 4 > len) return 0;
       return data[off] | (data[off+1]<<8) | (data[off+2]<<16) | (data[off+3]<<24);
     }
 
     let i = 0;
     while(i < len) {
       let found = null;
-      let nextI = i + 1; // Default advance
+      let nextI = i + 1;
       const b = data[i];
 
-      // 1. STRICT JPEG (FF D8 FF ...)
-      // We look for FF D8 FF [E0|E1|DB|C0] to ensure it's a real image and not random bytes
-      if (b === 0xFF && data[i+1] === 0xD8 && data[i+2] === 0xFF) {
-        const marker = data[i+3];
-        // E0=JFIF, E1=Exif, DB=DQT, C0=SOF0, C4=DHT
-        if ((marker >= 0xE0 && marker <= 0xEF) || marker === 0xDB || marker === 0xC0 || marker === 0xC4) {
-           // Scan for End (FF D9)
-           // We scan forward conservatively to avoid false positives inside entropy data
-           // but since we validated the header, we are more confident.
-           let ptr = i + 2;
+      // 1. PNG
+      if (b === 0x89 && match(i, SIGS.png)) {
+         // Find IEND
+         let end = -1;
+         const IEND = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+         // Search forward up to 50MB (sanity)
+         for (let k=i+8; k < Math.min(len, i+50000000); k++) {
+           if (data[k] === 0x49 && match(k, IEND)) { end = k; break; }
+         }
+         if (end !== -1) {
+           found = { type: 'image/png', ext: 'png', start: i, size: (end+8)-i };
+         }
+      }
+      
+      // 2. JPG (Strict)
+      else if (b === 0xFF && data[i+1] === 0xD8 && data[i+2] === 0xFF) {
+         // Check E0/E1/DB
+         const m = data[i+3];
+         if (m === 0xE0 || m === 0xE1 || m === 0xDB) {
            let end = -1;
-           while(ptr < Math.min(len, i + 20_000_000)) { // 20MB limit
-             if (data[ptr] === 0xFF && data[ptr+1] === 0xD9) {
-                // Check if it's not a restart marker or escaped FF
-                end = ptr;
-                break;
-             }
-             ptr++;
+           for (let k=i+2; k < Math.min(len, i+20000000); k++) {
+             if (data[k]===0xFF && data[k+1]===0xD9) { end=k; break; }
            }
            if (end !== -1) {
-             const size = (end + 2) - i;
-             found = { ext:'jpg', type:'image/jpeg', start:i, size:size };
+             found = { type: 'image/jpeg', ext: 'jpg', start: i, size: (end+2)-i };
            }
-        }
-      }
-
-      // 2. PNG
-      else if (b === 0x89 && match(i, PNG_SIG)) {
-        const iend = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
-        const end = find(i+8, iend);
-        if (end !== -1) {
-           found = { ext:'png', type:'image/png', start:i, size:(end+8)-i };
-        }
-      }
-
-      // 3. WEBP
-      else if (b === 0x52 && match(i, WEBP_SIG)) {
-         // Check "WEBP" at +8
-         if (data[i+8]===0x57 && data[i+9]===0x45 && data[i+10]===0x42 && data[i+11]===0x50) {
-            const size = readU32(i+4);
-            if (size > 0 && i+size+8 <= len) {
-               found = { ext:'webp', type:'image/webp', start:i, size:size+8 };
-            }
          }
       }
 
-      // 4. BMP
-      else if (b === 0x42 && data[i+1] === 0x4D) { // BM
-         const size = readU32(i+2);
-         // Validation: Size must be > 14 and headersize (at 14) usually 40 (0x28) or higher
-         if (size > 50 && size < 100_000_000 && i+size <= len) {
-            const headerSize = readU32(i+14);
-            if (headerSize >= 12 && headerSize <= 124) {
-               found = { ext:'bmp', type:'image/bmp', start:i, size:size };
-            }
-         }
+      // 3. DDS (DirectDraw)
+      else if (b === 0x44 && match(i, SIGS.dds)) {
+        // DDS doesn't store file size. We read Height/Width/Pitch to guess or heuristic.
+        // Simple Heuristic: DDS usually contiguous.
+        // We will scan for next known header or EOF to determine cut-off.
+        // Or assume max 16MB.
+        const nextHeader = findNextHeader(i + 4, 16000000);
+        const size = (nextHeader !== -1) ? nextHeader - i : Math.min(len-i, 4000000); 
+        found = { type: 'application/octet-stream', ext: 'dds', start: i, size: size };
       }
 
-      // 5. TGA (Footer Scan)
-      // TGA headers are garbage, so we look for the FOOTER signature "TRUEVISION-XFILE"
-      // This is unique. If we find it, we calculate start backwards?
-      // Actually, TGA 2.0 has footer at EOF. If we are scanning linearly, we might miss it.
-      // STRATEGY: We scan linearly. If we see "TRUEVISION-XFILE", we know a TGA *ended* here.
-      // But we need the start. 
-      // Alternative: Look for common TGA header? (Unreliable).
-      // Let's rely on TGA Footer only if checking end of file? No, embedded files.
-      // If `b` matches 'T' of TRUEVISION, check backwards?
-      // Too complex for stream. Let's skip TGA for linear scan unless we detect specific resolution headers.
-
-      // 6. PKM (ETC1)
-      else if (b === 0x50 && match(i, PKM_SIG)) {
-         // PKM does not store total size easily, usually fixed header + data.
-         // We assume a standard texture size or search for next header.
-         // Heuristic: 4MB max
-         found = { ext:'pkm', type:'application/octet-stream', start:i, size: Math.min(len-i, 4*1024*1024) };
+      // 4. KTX (Khronos)
+      else if (b === 0xAB && match(i, SIGS.ktx)) {
+        // KTX 1.0 has bytesOfKeyValueData at offset 60? 
+        // We do heuristic scan for next header.
+        const nextHeader = findNextHeader(i + 12, 16000000);
+        const size = (nextHeader !== -1) ? nextHeader - i : Math.min(len-i, 4000000);
+        found = { type: 'application/octet-stream', ext: 'ktx', start: i, size: size };
       }
 
-      // 7. PVR (PowerVR)
-      else if (b === 0x50 && match(i, PVR_SIG)) {
-          const headerSize = readU32(i+4);
-          const height = readU32(i+8);
-          const width = readU32(i+12);
-          // Rough calc, hard to know bpp without parsing flags.
-          // Just take header + reasonable chunk.
-          found = { ext:'pvr', type:'application/octet-stream', start:i, size: headerSize + (width*height) }; 
+      // 5. ASTC (Adaptive Scalable)
+      else if (b === 0x13 && match(i, SIGS.astc)) {
+        // Header is 16 bytes.
+        // xDim(3), yDim(3), zDim(3), xSize(3), ySize(3), zSize(3)
+        // Hard to calc exact bytes without block info.
+        const nextHeader = findNextHeader(i + 16, 16000000);
+        const size = (nextHeader !== -1) ? nextHeader - i : Math.min(len-i, 4000000);
+        found = { type: 'application/octet-stream', ext: 'astc', start: i, size: size };
       }
 
       if (found) {
-         if (found.size > 0) {
-           const slice = data.slice(found.start, found.start + found.size);
-           results.push({ buf: slice, ...found, src: sourceName });
-           nextI = found.start + found.size;
-           // Align to 4 bytes
-           while(nextI % 4 !== 0 && nextI < len) nextI++;
-         }
-         i = nextI;
-      } else {
-         i += step;
+        // Copy buffer
+        const buf = data.slice(found.start, found.start + found.size);
+        results.push({ buf: buf.buffer, ...found, src: sourceName });
+        nextI = found.start + found.size;
+        // Align 4
+        while(nextI % 4 !== 0 && nextI < len) nextI++;
       }
+
+      i = nextI;
     }
-    
-    // Post back
-    if (results.length > 0) {
-      const buffers = results.map(r => r.buf.buffer);
-      self.postMessage({ results }, buffers);
+
+    // Helper for heuristic size
+    function findNextHeader(start, limit) {
+      const max = Math.min(len, start+limit);
+      for(let k=start; k<max-8; k+=4) { // Scan 4-byte aligned for speed
+        if (match(k, SIGS.png)) return k;
+        if (data[k]===0xFF && data[k+1]===0xD8 && data[k+2]===0xFF) return k;
+        if (match(k, SIGS.dds)) return k;
+        if (match(k, SIGS.ktx)) return k;
+        if (match(k, SIGS.astc)) return k;
+        if (match(k, SIGS.pvr)) return k;
+        if (match(k, [0x55,0x6E,0x69,0x74,0x79])) return k; // Unity header
+      }
+      return -1;
     }
+
+    self.postMessage({ results }, results.map(r => r.buf));
     self.postMessage({ done: true });
   }
 </script>
@@ -298,69 +258,120 @@
 <script>
   const fileInput = document.getElementById('fileInput');
   const grid = document.getElementById('grid');
-  const statusText = document.getElementById('statusText');
-  const progressBar = document.getElementById('progress-bar');
-  const progressArea = document.getElementById('progress-area');
+  const status = document.getElementById('status');
+  const progressBar = document.getElementById('progressBar');
+  const progressTrack = document.getElementById('progressTrack');
   const dlAllBtn = document.getElementById('dlAllBtn');
-  const deepScanToggle = document.getElementById('deepScanToggle');
 
   let zipExport = new JSZip();
-  let totalFound = 0;
-  let isDeep = false;
+  let totalCount = 0;
 
-  const workerUrl = URL.createObjectURL(new Blob([document.getElementById('worker-script').textContent], {type:'text/javascript'}));
+  // Setup Worker
+  const workerBlob = new Blob([document.getElementById('worker-js').textContent], {type:'text/javascript'});
+  const workerUrl = URL.createObjectURL(workerBlob);
 
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Reset
-    grid.innerHTML = '';
-    zipExport = new JSZip();
-    totalFound = 0;
-    dlAllBtn.disabled = true;
-    dlAllBtn.textContent = "Download All";
-    isDeep = deepScanToggle.checked;
+    resetUI();
     
-    statusText.textContent = isDeep ? "Initializing Deep Scan..." : "Initializing Scan...";
-    progressArea.style.display = 'block';
-    progressBar.style.width = '5%';
-
+    // Check for Archive
     if (file.name.match(/\.(zip|apk|jar|obb)$/i)) {
-       // ZIP MODE
-       statusText.textContent = "Unzipping...";
-       try {
-         const zip = await JSZip.loadAsync(file);
-         const files = Object.keys(zip.files).filter(n => !zip.files[n].dir);
-         
-         let count = 0;
-         for (const name of files) {
-           statusText.textContent = `Scanning: ${name}`;
-           const content = await zip.files[name].async('uint8array');
-           await runWorker(content.buffer, name);
-           count++;
-           progressBar.style.width = ((count/files.length)*100) + '%';
-         }
-       } catch(err) {
-         console.error(err);
-         statusText.textContent = "Zip Error. Scanning as raw...";
-         const buf = await file.arrayBuffer();
-         await runWorker(buf, file.name);
-       }
-    } else {
-       // RAW MODE
-       statusText.textContent = "Reading file...";
-       const buf = await file.arrayBuffer();
-       statusText.textContent = "Scanning...";
-       await runWorker(buf, file.name);
-       progressBar.style.width = '100%';
+      await processZip(file);
+    } 
+    // Check for UnityFS (Signature check)
+    else {
+      // Read first 20 bytes to check signature
+      const head = new Uint8Array(await file.slice(0, 20).arrayBuffer());
+      const sig = String.fromCharCode(...head.slice(0,7));
+      
+      if (sig === 'UnityFS') {
+        await processUnityFS(file);
+      } else {
+        // Regular Binary
+        await processBuffer(await file.arrayBuffer(), file.name);
+      }
     }
-
-    statusText.textContent = `Completed. Found ${totalFound} assets.`;
-    setTimeout(() => { progressArea.style.display = 'none'; }, 2000);
+    
+    status.textContent = `Completed. Found ${totalCount} assets.`;
+    progressTrack.style.display = 'none';
   });
 
-  function runWorker(buffer, name) {
+  function resetUI() {
+    grid.innerHTML = '';
+    zipExport = new JSZip();
+    totalCount = 0;
+    dlAllBtn.disabled = true;
+    dlAllBtn.textContent = 'Download All (0)';
+    progressTrack.style.display = 'block';
+    progressBar.style.width = '0%';
+  }
+
+  // --- UnityFS Unpacker ---
+  async function processUnityFS(file) {
+    status.textContent = 'Detected UnityFS. Attempting decompression...';
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      
+      // VERY basic parsing of UnityFS to find compressed blocks
+      // Note: A full parser is complex. We will try to find "LZ4" signature or blocks.
+      // UnityFS header is variable size.
+      // Strategy: Scan for LZ4 block magic? 
+      // LZ4 magic is usually not standard frames in Unity.
+      // BUT, we can try to use a brute-force approach: 
+      // If we see a large block of High Entropy, try to LZ4 decompress it? No, too slow.
+      
+      // Better: Use `lz4js` to decompress the *whole* thing if it was a single stream?
+      // No, UnityFS is blocks.
+      
+      // FALLBACK: Since writing a parser in this snippet is risky, 
+      // we will scan the RAW file first. Often small assets are uncompressed.
+      // AND we will warn the user.
+      
+      // Let's do a simple Pass-Through scan first.
+      await processBuffer(arrayBuffer, file.name + " (Raw)");
+      
+      // If we found nothing, it's likely compressed.
+      if (totalCount === 0) {
+        status.textContent = "UnityFS is compressed. Deep scan found nothing. (Decompression not supported in this simplified tool)";
+      } else {
+        status.textContent += " (Scanned raw UnityFS container)";
+      }
+    } catch(e) {
+      console.error(e);
+      status.textContent = "Error processing UnityFS.";
+    }
+  }
+
+  // --- ZIP Processing ---
+  async function processZip(file) {
+    status.textContent = "Unzipping...";
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const files = Object.keys(zip.files).filter(n => !zip.files[n].dir);
+      
+      let i = 0;
+      for (const name of files) {
+        status.textContent = `Scanning: ${name}`;
+        const u8 = await zip.files[name].async("uint8array");
+        
+        // If file inside zip is UnityFS, we could recursive?
+        // For now, just scan buffer.
+        await processBuffer(u8.buffer, name);
+        
+        i++;
+        progressBar.style.width = (i/files.length*100)+'%';
+      }
+    } catch(e) {
+      status.textContent = "Zip Error. Scanning raw...";
+      await processBuffer(await file.arrayBuffer(), file.name);
+    }
+  }
+
+  // --- Core Scanner ---
+  function processBuffer(buffer, name) {
     return new Promise(resolve => {
       const w = new Worker(workerUrl);
       w.onmessage = (e) => {
@@ -371,51 +382,47 @@
           resolve();
         }
       };
-      w.postMessage({ buffer, deepScan: isDeep, sourceName: name }, [buffer]);
+      w.postMessage({ buffer, sourceName: name }, [buffer]); // Zero-copy transfer
     });
   }
 
   function render(items) {
     const frag = document.createDocumentFragment();
     items.forEach(item => {
-      totalFound++;
+      totalCount++;
+      // Zip
+      zipExport.file(`${item.ext}/${totalCount}_${item.src}.${item.ext}`, item.buf);
+
+      // DOM
       const blob = new Blob([item.buf], {type: item.type});
       const url = URL.createObjectURL(blob);
-      const kbs = (item.size/1024).toFixed(1);
-
-      // Add to ZIP
-      zipExport.file(`extracted/${totalFound}_${item.src}_.${item.ext}`, item.buf);
+      const kb = (item.size/1024).toFixed(1);
 
       const div = document.createElement('div');
       div.className = 'card';
-
+      
       let preview = '';
-      if (item.type.startsWith('image/')) {
+      if (item.ext === 'png' || item.ext === 'jpg' || item.ext === 'webp') {
         preview = `<img src="${url}" loading="lazy" />`;
       } else {
-        preview = `<div class="placeholder-text">${item.ext}</div>`;
+        preview = `<div class="type-badge">${item.ext}</div>`;
       }
 
       div.innerHTML = `
-        <div class="preview-box">
-          ${preview}
-          <div class="format-label">${item.ext.toUpperCase()}</div>
+        <div class="card-thumb">${preview}</div>
+        <div class="card-tags">
+          <span class="tag ${item.ext}">${item.ext}</span>
         </div>
-        <div class="file-name" title="${item.src}">${item.src}</div>
-        <div class="info-row">
-          <span>#${totalFound}</span>
-          <span>${kbs} KB</span>
-        </div>
-        <a href="${url}" download="${totalFound}.${item.ext}" class="dl-link">Save</a>
+        <div class="card-info" title="${item.src}">${item.src}</div>
+        <div class="card-info">${kb} KB</div>
+        <a href="${url}" download="${totalCount}.${item.ext}" class="card-btn">Download</a>
       `;
       frag.appendChild(div);
     });
-    grid.appendChild(frag);
     
-    if (totalFound > 0) {
-      dlAllBtn.disabled = false;
-      dlAllBtn.textContent = `Download All (${totalFound})`;
-    }
+    grid.appendChild(frag);
+    dlAllBtn.disabled = totalCount === 0;
+    dlAllBtn.textContent = `Download All (${totalCount})`;
   }
 
   window.downloadAll = function() {
@@ -423,11 +430,12 @@
     zipExport.generateAsync({type:"blob"}).then(blob => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = "DeepScan_Extracted.zip";
+      a.download = "Unity_Extracted_Assets.zip";
       a.click();
-      dlAllBtn.textContent = `Download All (${totalFound})`;
+      dlAllBtn.textContent = `Download All (${totalCount})`;
     });
   }
 </script>
+
 </body>
 </html>
